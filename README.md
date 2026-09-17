@@ -48,3 +48,17 @@ ruff check .
 ```
 
 MIT licensed.
+
+## Reliability and scope
+
+Ingestion stages all pages before updating the index. Empty/image-only PDFs, encrypted files,
+more than 500 pages, more than 15 MB, and over 2 million extracted characters are rejected.
+The answer includes citations only for the excerpts actually returned. Tests cover a failure
+on a later page, unchanged index state, extraction budgets, and HTTP validation without downloads.
+
+This is an extractive BM25 baseline, not a trained generative model. Keyword overlap can return
+irrelevant passages; citations show provenance, not correctness. There is no OCR or cross-language
+retrieval. The in-memory index is shared by every client and lost on restart: use a single local
+user and one worker. Authentication, tenant separation, durable storage, and parser process
+isolation are required before exposing it as a multi-user service. PDF extraction can be expensive
+before character limits are known; these limits do not replace process memory/time quotas.

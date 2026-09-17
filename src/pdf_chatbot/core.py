@@ -76,14 +76,33 @@ class KnowledgeBase:
         return len(pieces)
 
     def add_pages(self, pages: Iterable[tuple[int, str]], source: str) -> int:
-        return sum(self.add_text(text, source, page) for page, text in pages if text.strip())
+        # Stage every page before publishing: a broken later page must not leave a partial index.
+        staged = KnowledgeBase()
+        characters = 0
+        for page, text in pages:
+            characters += len(text)
+            if characters > 2_000_000:
+                raise ValueError("Extracted document exceeds 2 million characters")
+            staged.add_text(text, source, page)
+        if not len(staged):
+            raise ValueError("PDF contains no extractable text; OCR is not supported")
+        self._chunks.extend(staged._chunks)
+        self._tokens.extend(staged._tokens)
+        self._document_frequency.update(staged._document_frequency)
+        return len(staged)
 
     def add_pdf_bytes(self, data: bytes, source: str = "document.pdf") -> int:
         try:
             from pypdf import PdfReader
         except ImportError as exc:  # pragma: no cover - dependency guard
             raise RuntimeError("Install pypdf to ingest PDF files") from exc
+        if len(data) > 15 * 1024 * 1024:
+            raise ValueError("PDF exceeds 15 MB")
         reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            raise ValueError("Encrypted PDFs are not supported")
+        if len(reader.pages) > 500:
+            raise ValueError("PDF exceeds 500 pages")
         pages = ((index + 1, page.extract_text() or "") for index, page in enumerate(reader.pages))
         return self.add_pages(pages, source)
 
@@ -131,7 +150,7 @@ class KnowledgeBase:
         answer = "\n\n".join(result.text for result in results[:2])
         citations = [
             {"source": result.source, "page": result.page, "score": result.score}
-            for result in results
+            for result in results[:2]
         ]
         return {"answer": answer, "citations": citations}
 

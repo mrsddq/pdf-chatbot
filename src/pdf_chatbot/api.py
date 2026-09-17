@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .core import KnowledgeBase
 
@@ -13,6 +13,13 @@ knowledge_base = KnowledgeBase()
 class ChatRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2_000)
     limit: int = Field(default=4, ge=1, le=10)
+
+    @field_validator("question")
+    @classmethod
+    def nonempty_question(cls, value: str) -> str:
+        if len(value.strip()) < 2:
+            raise ValueError("Question must contain at least two non-space characters")
+        return value.strip()
 
 
 @app.get("/health")
@@ -30,7 +37,7 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, object]:
     try:
         count = knowledge_base.add_pdf_bytes(data, file.filename or "document.pdf")
     except Exception as exc:
-        raise HTTPException(422, f"Could not read PDF: {exc}") from exc
+        raise HTTPException(422, "PDF is unreadable, encrypted, empty, or exceeds extraction limits") from exc
     return {"filename": file.filename, "chunks_added": count, "total_chunks": len(knowledge_base)}
 
 
